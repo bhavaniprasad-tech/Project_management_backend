@@ -6,67 +6,48 @@ import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
 import java.util.Date;
+import java.util.stream.Collectors;
 
 @Component
 public class JwtProvider {
 
-    private static SecretKey key;
+    private SecretKey key;
 
-    // Inject secret from application.properties
     @Value("${jwt.secret}")
     private String secret;
 
     @PostConstruct
     public void init() {
-        // Initialize the key AFTER the secret is injected
-        // Make sure your secret is at least 32 characters long
         this.key = Keys.hmacShaKeyFor(secret.getBytes());
     }
 
-    // Generate JWT token with username as subject and email claim (optional)
-    public static String generateToken(Authentication auth) {
+    // ✅ Generate NEW token on every login
+    public String generateToken(Authentication auth) {
+        String authorities = auth.getAuthorities()
+                .stream()
+                .map(a -> a.getAuthority())
+                .collect(Collectors.joining(","));
+
         return Jwts.builder()
                 .setSubject(auth.getName())
-                .claim("email", auth.getName()) // add email claim (optional)
+                .claim("email", auth.getName())
+                .claim("authorities", authorities)
                 .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() +  1000L * 60 * 60 * 24 * 7)) // 7 day expiry
+                .setExpiration(new Date(System.currentTimeMillis() + 7L * 24 * 60 * 60 * 1000)) // 7 days
                 .signWith(key)
                 .compact();
     }
 
-    // Extract username from token
-    public String getUsernameFromToken(String token) {
-        Claims claims = Jwts.parser()
+    // ✅ Used by filter
+    public Claims parseToken(String token) {
+        return Jwts.parser()
                 .setSigningKey(key)
                 .build()
                 .parseClaimsJws(token)
                 .getBody();
-
-        return claims.getSubject();
-    }
-
-    // Extract email claim (if you added it)
-    public String getEmailFromToken(String token) {
-
-        token = token.substring(7);
-
-        Claims claims = Jwts.parser()
-                .setSigningKey(key)
-                .build()
-                .parseClaimsJws(token)
-                .getBody();
-
-        return claims.get("email", String.class);
-    }
-
-    // Validate token by checking username matches UserDetails
-    public boolean validateToken(String token, UserDetails userDetails) {
-        String username = getUsernameFromToken(token);
-        return username.equals(userDetails.getUsername());
     }
 }

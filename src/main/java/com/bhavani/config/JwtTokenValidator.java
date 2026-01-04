@@ -2,73 +2,73 @@ package com.bhavani.config;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-import javax.crypto.SecretKey;
 import java.io.IOException;
 import java.util.List;
 
 @Component
 public class JwtTokenValidator extends OncePerRequestFilter {
 
+    private final JwtProvider jwtProvider;
+
+    public JwtTokenValidator(JwtProvider jwtProvider) {
+        this.jwtProvider = jwtProvider;
+    }
+
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
-                                    FilterChain filterChain) throws ServletException, IOException {
+    protected void doFilterInternal(HttpServletRequest request,
+                                    HttpServletResponse response,
+                                    FilterChain filterChain)
+            throws ServletException, IOException {
 
         String path = request.getServletPath();
 
-        // ✅ Skip token validation for public endpoints
-        if (path.equals("/auth/signup") || path.equals("/auth/login")) {
+        // ✅ Public endpoints
+        if (path.startsWith("/auth")) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        String authHeader = request.getHeader(JwtConstant.JWT_HEADER);
+        String authHeader = request.getHeader("Authorization");
 
-        if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            String jwt = authHeader.substring(7); // Remove "Bearer " prefix
+        // ✅ No token → let Spring Security handle it
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            filterChain.doFilter(request, response);
+            return;
+        }
 
-            try {
-                // ✅ Parse and validate the token
-                SecretKey key = Keys.hmacShaKeyFor(JwtConstant.SECRET_KEY.getBytes());
-                Claims claims = Jwts.parser()
-                        .setSigningKey(key)
-                        .build()
-                        .parseClaimsJws(jwt)
-                        .getBody();
+        String token = authHeader.substring(7);
 
-                String email = String.valueOf(claims.get("email"));
-                String authorities = String.valueOf(claims.get("authorities"));
+        try {
+            Claims claims = jwtProvider.parseToken(token);
 
-                List<GrantedAuthority> auths = AuthorityUtils.commaSeparatedStringToAuthorityList(authorities);
-                Authentication authentication = new UsernamePasswordAuthenticationToken(email, null, auths);
-                SecurityContextHolder.getContext().setAuthentication(authentication);
+            String email = claims.get("email", String.class);
+            String authorities = claims.get("authorities", String.class);
 
-            } catch (ExpiredJwtException e) {
-                System.out.println("JWT validation failed: Token expired");
-                throw new BadCredentialsException("Token expired");
-            } catch (Exception e) {
-                System.out.println("JWT validation failed: " + e.getClass().getSimpleName() + " - " + e.getMessage());
-                throw new BadCredentialsException("Invalid Token....");
-            }
+            List<GrantedAuthority> auths =
+                    AuthorityUtils.commaSeparatedStringToAuthorityList(authorities);
 
-        } else {
-            // ✅ If token is missing or malformed
-            System.out.println("JWT Header missing or does not start with 'Bearer ': " + authHeader);
-            throw new BadCredentialsException("Missing or invalid Authorization header");
+            UsernamePasswordAuthenticationToken authentication =
+                    new UsernamePasswordAuthenticationToken(email, null, auths);
+
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+
+        } catch (ExpiredJwtException e) {
+            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Token expired");
+            return;
+        } catch (Exception e) {
+            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid token");
+            return;
         }
 
         filterChain.doFilter(request, response);
