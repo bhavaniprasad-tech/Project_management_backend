@@ -34,7 +34,13 @@ public class Chat {
     private List<Message> messages ;
 
     @ManyToMany
+    @JoinTable(
+            name = "chat_users",
+            joinColumns = @JoinColumn(name = "chat_id"),
+            inverseJoinColumns = @JoinColumn(name = "user_id")
+    )
     private List<User> users = new ArrayList<>();
+
 
     public Chat getChat() {
         return this;
