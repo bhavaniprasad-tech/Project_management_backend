@@ -6,7 +6,6 @@ import com.bhavani.repository.UserRepository;
 import com.bhavani.request.LoginRequest;
 import com.bhavani.response.AuthResponse;
 import com.bhavani.service.CustomUserDetailsImpl;
-
 import com.bhavani.service.SubscriptionService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -36,58 +35,77 @@ public class AuthController {
     @Autowired
     private SubscriptionService subscriptionService;
 
+    @Autowired
+    private JwtProvider jwtProvider; // ✅ inject provider
+
     // ========== SIGNUP ==========
     @PostMapping("/signup")
     public ResponseEntity<AuthResponse> createUserHandler(@RequestBody User user) {
-        // Check if user already exists
+
         if (userRepository.findAllByEmail(user.getEmail()) != null) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already exists with another account.");
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Email already exists with another account."
+            );
         }
 
-        // Save new user
         user.setPassword(passwordEncoder.encode(user.getPassword()));
         User savedUser = userRepository.save(user);
-
         subscriptionService.createSubscription(savedUser);
 
-        // Authenticate newly created user
-        UserDetails userDetails = customUserDetails.loadUserByUsername(user.getEmail());
-        Authentication authentication = new UsernamePasswordAuthenticationToken(
-                userDetails, null, userDetails.getAuthorities());
+        UserDetails userDetails =
+                customUserDetails.loadUserByUsername(user.getEmail());
+
+        Authentication authentication =
+                new UsernamePasswordAuthenticationToken(
+                        userDetails,
+                        null,
+                        userDetails.getAuthorities()
+                );
+
         SecurityContextHolder.getContext().setAuthentication(authentication);
 
-        // Generate JWT
-        String jwt = JwtProvider.generateToken(authentication);
+        // ✅ FIX: instance method call
+        String jwt = jwtProvider.generateToken(authentication);
 
-        AuthResponse response = new AuthResponse(jwt, "Signup successful");
-        return new ResponseEntity<>(response, HttpStatus.CREATED);
+        return new ResponseEntity<>(
+                new AuthResponse(jwt, "Signup successful"),
+                HttpStatus.CREATED
+        );
     }
 
     // ========== SIGNIN ==========
-    @PostMapping("/signing")
-    public ResponseEntity<AuthResponse> signing(@RequestBody LoginRequest loginRequest) {
-        String email = loginRequest.getEmail();
-        String password = loginRequest.getPassword();
+    @PostMapping("/login")
+    public ResponseEntity<AuthResponse> login(@RequestBody LoginRequest loginRequest) {
 
-        // Authenticate user
-        Authentication authentication = authenticate(email, password);
+        Authentication authentication =
+                authenticate(loginRequest.getEmail(), loginRequest.getPassword());
+
         SecurityContextHolder.getContext().setAuthentication(authentication);
 
-        // Generate JWT
-        String jwt = JwtProvider.generateToken(authentication);
+        // ✅ FIX: instance method call
+        String jwt = jwtProvider.generateToken(authentication);
 
-        AuthResponse response = new AuthResponse(jwt, "Signin successful");
-        return new ResponseEntity<>(response, HttpStatus.OK);
+        return ResponseEntity.ok(
+                new AuthResponse(jwt, "Signin successful")
+        );
     }
 
-    // ========== AUTHENTICATION ==========
+    // ========== AUTH ==========
     private Authentication authenticate(String email, String password) {
-        UserDetails userDetails = customUserDetails.loadUserByUsername(email);
 
-        if (userDetails == null || !passwordEncoder.matches(password, userDetails.getPassword())) {
+        UserDetails userDetails =
+                customUserDetails.loadUserByUsername(email);
+
+        if (userDetails == null ||
+                !passwordEncoder.matches(password, userDetails.getPassword())) {
             throw new BadCredentialsException("Invalid email or password.");
         }
 
-        return new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+        return new UsernamePasswordAuthenticationToken(
+                userDetails,
+                null,
+                userDetails.getAuthorities()
+        );
     }
 }

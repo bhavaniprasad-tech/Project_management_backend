@@ -1,9 +1,9 @@
 package com.bhavani.service;
 
-import com.bhavani.config.JwtProvider;
 import com.bhavani.model.User;
 import com.bhavani.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
@@ -13,20 +13,24 @@ public class UserServiceImpl implements UserService {
 
     @Autowired
     private UserRepository userRepository;
-    @Autowired
-    private JwtProvider jwtProvider;
 
+    // ✅ FIX: use SecurityContext instead of JWT parsing
     @Override
     public User findUserProfileByJwt(String jwt) throws Exception {
-        String email = jwtProvider.getEmailFromToken(jwt);
+
+        String email = (String) SecurityContextHolder
+                .getContext()
+                .getAuthentication()
+                .getPrincipal();
+
         return findUserByEmail(email);
     }
 
     @Override
     public User findUserByEmail(String email) throws Exception {
         User user = userRepository.findAllByEmail(email);
-        if(user==null){
-            throw new Exception("User not not found");
+        if (user == null) {
+            throw new Exception("User not found");
         }
         return user;
     }
@@ -34,7 +38,7 @@ public class UserServiceImpl implements UserService {
     @Override
     public User findUserById(Long userId) throws Exception {
         Optional<User> optionalUser = userRepository.findById(userId);
-        if(optionalUser.isEmpty()){
+        if (optionalUser.isEmpty()) {
             throw new Exception("User not found");
         }
         return optionalUser.get();
