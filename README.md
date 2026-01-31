@@ -6,7 +6,7 @@ This repository contains the backend implementation of a Project Management Syst
 
 The frontend of this application is built using React.js and is maintained in a separate repository.
 
-🔗 Frontend Repo: https://github.com/bhavaniprasad-tech/project-management-frontend
+🔗 Frontend Repo: https://github.com/bhavaniprasad-tech/Project_management_frontend
 
 ## Tech Stack
 
